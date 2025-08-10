@@ -6,9 +6,10 @@ type Config = {
 };
 
 type APIConfig = {
-  fileServerHits: number;
+  baseURL: string;
   port: number;
   platform: string;
+  faceitAPIKey: string;
 };
 
 type DBConfig = {
@@ -22,16 +23,16 @@ const migrationConfig: MigrationConfig = {
 
 export const config: Config = {
   api: {
-    fileServerHits: 0,
+    baseURL: envOrThrow("BASE_URL"),
     port: Number(envOrThrow("PORT")),
     platform: envOrThrow("PLATFORM"),
+    faceitAPIKey: envOrThrow("FACEIT_API_KEY"),
   },
   db: {
     url: envOrThrow("DB_FILE_NAME"),
     migrationConfig: migrationConfig,
   },
 };
-
 
 function envOrThrow(key: string) {
   const value = process.env[key];
