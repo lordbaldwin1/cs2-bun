@@ -8,7 +8,7 @@ export async function getBrowser(): Promise<Browser> {
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
-    console.log("✅ Playwright browser launched");
+    console.log("Playwright browser launched");
   }
   return browser;
 }
@@ -17,6 +17,6 @@ export async function closeBrowser() {
   if (browser) {
     await browser.close();
     browser = null;
-    console.log("🛑 Playwright browser closed");
+    console.log("Playwright browser closed");
   }
 }
