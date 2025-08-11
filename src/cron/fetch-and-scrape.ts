@@ -7,7 +7,7 @@ import {
   buildLeetifyMatchURL,
   buildLeetifyProfileURL,
 } from "./helpers";
-import { type BrowserContext } from "playwright";
+import { type BrowserContext, type Page } from "playwright";
 
 type PlayerItem = {
   player_id: string;
@@ -81,6 +81,13 @@ type MatchAverageStats = {
   lossAvgUtility: number;
 };
 
+const USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+];
+const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
 export async function startFaceitLeetifyFetching() {
   const playerIDs = await fetchFaceitPlayerIDs("EU", 5, 0);
   if (playerIDs.length === 0) {
@@ -104,130 +111,61 @@ export async function startFaceitLeetifyFetching() {
   console.log(matchURLs.slice(0, 5));
 
   const browser = await getBrowser();
-  const context = await browser.newContext();
+  const context = await browser.newContext({
+    userAgent: USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+    viewport: { width: 1280, height: 800 },
+  });
 
+  const table = await scrapeMatch(context, matchURLs[0]!);
+  for (const row of table) {
+    console.log(row);
+  }
+}
+
+async function scrapeMatch(context: BrowserContext, matchURL: string) {
   try {
-    const matches = await scrapeLeetifyMatches(context, matchURLs);
-    const avgMatchStats = getAverageMatchStats(matches);
-    await saveAverageMatchStats(avgMatchStats);
-  } catch (error) {
-    console.error("Error scraping Leetify matches:", error);
-  } finally {
-    await context.close();
-  }
-}
+    const page: Page = await context.newPage();
+    console.log("New page created");
+    await page.goto(matchURL, { waitUntil: "domcontentloaded" });
+    console.log(`Navigated to: ${matchURL}`);
+    await page.waitForSelector("table");
+    console.log("Table selector visible");
 
-async function saveAverageMatchStats(matches: MatchAverageStats[]) {
+    const tableData = await page.evaluate(() => {
+      console.log("Evaluating page");
+      const rows = Array.from(
+        document.querySelectorAll("app-scoreboard-table-row")
+      );
+      const allData: string[][] = [];
 
-}
-
-async function scrapeLeetifyMatches(
-  context: BrowserContext,
-  matchURLs: string[]
-) {
-  const results: ScrapedMatchData[] = [];
-
-  for (const url of matchURLs) {
-    try {
-      const page = await context.newPage();
-
-      // Block images/CSS/fonts
-      await page.route("**/*", (route) => {
-        const type = route.request().resourceType();
-        if (["image", "stylesheet", "font"].includes(type)) {
-          route.abort();
-        } else {
-          route.continue();
-        }
-      });
-
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-      await page.waitForSelector("table", { state: "visible", timeout: 10000 });
-      await page.waitForTimeout(1000);
-
-      const matchResult = await page.textContent("div.phrase");
-
-      if (matchResult?.trim() === "TIE") {
-        console.log(`Tie detected, skipping: ${url}`);
-        await page.close();
-        continue;
-      }
-
-      const matchData = await page.evaluate(() => {
-        // get all rows
-        const rows = document.querySelectorAll("table tbody tr");
-
-        // turn rows into an array, and then make an array
-        // out of the cells of the table
-        // array of arrays!
-        return Array.from(rows).map((row) => {
-          const cells = row.querySelectorAll("td");
-
-          return Array.from(cells).map(
-            (cell) => cell.textContent?.trim() || ""
-          );
-        });
-      });
-
-      await page.close();
-
-      console.log("Data scraped:");
-      console.log(matchData);
-      results.push({
-        data: matchData,
-        url,
-      });
-    } catch (err: unknown) {
-      console.error(`Error scraping ${url}:`, err);
-      results.push({ data: [], url });
-    }
-  }
-
-  const matches: Match[] = [];
-  for (const match of results) {
-    const validMatches: string[][] = [];
-    for (const player of match.data) {
-      if (player.length === 0) {
-        continue;
-      }
-      validMatches.push(player);
-    }
-
-    if (validMatches.length < 10) {
-      console.error("Skipping match, less than 10 players:", match.url);
-      continue;
-    }
-
-    const winPlayers: PlayerStats[] = [];
-    const losePlayers: PlayerStats[] = [];
-    validMatches.slice(0, 10).forEach((player, i) => {
-      const p: PlayerStats = {
-        name: player[0] ?? "",
-        leetifyRating: player[1] ?? "",
-        personalPerformance: player[2] ?? "",
-        hltvRating: player[3] ?? "",
-        kd: player[4] ?? "",
-        adr: player[5] ?? "",
-        aim: player[6] ?? "",
-        utility: player[7] ?? "",
-      };
-
-      if (i < 5) {
-        winPlayers.push(p);
-      } else {
-        losePlayers.push(p);
-      }
-
-      const winTeam: Team = { players: winPlayers, won: true };
-      const loseTeam: Team = { players: losePlayers, won: false };
-
-      matches.push({
-        teams: [winTeam, loseTeam],
-        matchURL: match.url,
-      });
+      rows.forEach((row) => {
+        const cells = Array.from(row.querySelectorAll("td"));
+        const builtRow: string[] = [];
+        
+        cells.forEach((cell, i) => {
+          if (i === 0) {
+            const name =
+            cell.querySelector(".text-truncate")?.textContent?.trim() ||
+            cell.textContent?.trim() ||
+            "";
+            builtRow.push(name);
+          } else {
+            builtRow.push(cell.textContent?.trim() || "");
+          }
+        })
+        allData.push(builtRow);
+      })
+      return allData;
     });
+    return tableData;
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      console.error(err.message);
+      return [];
+    }
+    console.error("Error: unknown error occurred");
+    return [];
   }
-  return matches;
 }
 
 async function fetchLeetifyMatchIDs(steamID: string) {
