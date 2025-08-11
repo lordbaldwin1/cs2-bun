@@ -1,6 +1,13 @@
 import { config } from "../config";
 import { savePlayer } from "../db/queries/players";
-import { buildFaceitLeaderboardURL, buildFaceitProfileURL, buildLeetifyProfileURL } from "./helpers";
+import { getBrowser } from "./browser";
+import {
+  buildFaceitLeaderboardURL,
+  buildFaceitProfileURL,
+  buildLeetifyMatchURL,
+  buildLeetifyProfileURL,
+} from "./helpers";
+import { type BrowserContext } from "playwright";
 
 type PlayerItem = {
   player_id: string;
@@ -32,29 +39,142 @@ type LeetifyAPIResponse = {
   }[];
 };
 
+type PlayerStats = {
+  name: string;
+  leetifyRating: string;
+  personalPerformance: string;
+  hltvRating: string;
+  kd: string;
+  adr: string;
+  aim: string;
+  utility: string;
+};
+
+type Team = {
+  players: PlayerStats[];
+  won: boolean;
+};
+
+type Match = {
+  teams: [Team, Team];
+  matchURL: string;
+};
+
+type ScrapedMatchData = {
+  data: string[][];
+  url: string;
+};
+
 export async function startFaceitLeetifyFetching() {
   const playerIDs = await fetchFaceitPlayerIDs("EU", 5, 0);
   if (playerIDs.length === 0) {
     throw new Error("Fetch PlayerIDs failed");
   }
-  console.log(playerIDs);
 
   const playerDetails = await fetchFaceitProfiles(playerIDs);
   if (playerDetails.length === 0) {
     throw new Error("Fetch Player Profiles failed");
   }
-  console.log(playerDetails);
 
   await savePlayerDetailsToDB(playerDetails);
 
-  const matchIDs: string[] = [];
+  const matchURLs: string[] = [];
   for (const player of playerDetails) {
     const ids = await fetchLeetifyMatchIDs(player.steam_id_64);
     for (const id of ids) {
-      matchIDs.push(id);
+      matchURLs.push(buildLeetifyMatchURL(id));
     }
   }
-  console.log(matchIDs.length);
+  console.log(matchURLs.slice(0, 5));
+
+  const browser = await getBrowser();
+  const context = await browser.newContext();
+
+  try {
+    await scrapeLeetifyMatches(context, matchURLs);
+  } catch (error) {
+    console.error("Error scraping Leetify matches:", error);
+  } finally {
+    await context.close();
+  }
+}
+
+async function scrapeLeetifyMatches(
+  context: BrowserContext,
+  matchURLs: string[]
+) {
+  const results: ScrapedMatchData[] = [];
+
+  for (const url of matchURLs) {
+    try {
+      const page = await context.newPage();
+
+      // Block images/CSS/fonts
+      await page.route("**/*", (route) => {
+        const type = route.request().resourceType();
+        if (["image", "stylesheet", "font"].includes(type)) {
+          route.abort();
+        } else {
+          route.continue();
+        }
+      });
+
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+      await page.waitForSelector("table", { state: "visible", timeout: 10000 });
+      await page.waitForTimeout(1000);
+
+      const matchResult = await page.textContent("div.phrase");
+
+      if (matchResult?.trim() === "TIE") {
+        console.log(`Tie detected, skipping: ${url}`);
+        await page.close();
+        continue; // skip to next URL
+      }
+
+      const matchData = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll("table tbody tr")).map(
+          (row) =>
+            Array.from(row.querySelectorAll("td")).map(
+              (cell) => cell.textContent?.trim() || ""
+            )
+        );
+      });
+
+      await page.close();
+
+      console.log("Data scraped:");
+      console.log(matchData);
+      results.push({
+        data: matchData,
+        url,
+      });
+
+    } catch (err: unknown) {
+      console.error(`Error scraping ${url}:`, err);
+      results.push({ data: [], url });
+    }
+  }
+
+  const matches: Match[] = [];
+  for (const match of results) {
+    const validMatches: string[][] = [];
+    for (const player of match.data) {
+      if (player.length === 0) {
+        continue;
+      }
+      validMatches.push(player);
+    }
+
+    if (validMatches.length < 10) {
+      console.error("Skipping match, less than 10 players:", match.url);
+      continue;
+    }
+
+    const winPlayers: PlayerStats[] = [];
+    const losePlayers: PlayerStats[] = [];
+    
+  }
+  return results;
 }
 
 async function fetchLeetifyMatchIDs(steamID: string) {
@@ -64,10 +184,10 @@ async function fetchLeetifyMatchIDs(steamID: string) {
     method: "GET",
     headers: {
       "User-Agent": "cs2-bun",
-    }
+    },
   });
   if (!response.ok) {
-    console.error(`Request failed: ${response.status}, ${URL}`)
+    console.error(`Request failed: ${response.status}, ${URL}`);
     return [];
   }
 
