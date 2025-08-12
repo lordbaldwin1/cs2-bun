@@ -1,3 +1,4 @@
+import { Table } from "drizzle-orm";
 import { config } from "../config";
 import { savePlayer } from "../db/queries/players";
 import { getBrowser } from "./browser";
@@ -8,6 +9,8 @@ import {
   buildLeetifyProfileURL,
 } from "./helpers";
 import { type BrowserContext, type Page } from "playwright";
+import { saveMatchStats } from "../db/queries/matches";
+import { savePlayerStats } from "../db/queries/player-stats";
 
 type PlayerItem = {
   player_id: string;
@@ -41,13 +44,14 @@ type LeetifyAPIResponse = {
 
 type PlayerStats = {
   name: string;
-  leetifyRating: string;
-  personalPerformance: string;
-  hltvRating: string;
-  kd: string;
-  adr: string;
-  aim: string;
-  utility: string;
+  leetifyRating: number | null;
+  personalPerformance: number | null;
+  hltvRating: number | null;
+  kd: number | null;
+  adr: number | null;
+  aim: number | null;
+  utility: number | null;
+  won: boolean;
 };
 
 type Team = {
@@ -60,25 +64,20 @@ type Match = {
   matchURL: string;
 };
 
-type ScrapedMatchData = {
-  data: string[][];
-  url: string;
-};
-
 type MatchAverageStats = {
   matchURL: string;
-  winAvgLeetifyRating: number;
-  winAvgPersonalPerformance: number;
-  winAvgHTLVRating: number;
-  winAvgKD: number;
-  winAvgAim: number;
-  winAvgUtility: number;
-  lossAvgLeetifyRating: number;
-  lossAvgPersonalPerformance: number;
-  lossAvgHTLVRating: number;
-  lossAvgKD: number;
-  lossAvgAim: number;
-  lossAvgUtility: number;
+  winAvgLeetifyRating: number | null;
+  winAvgPersonalPerformance: number | null;
+  winAvgHTLVRating: number | null;
+  winAvgKD: number | null;
+  winAvgAim: number | null;
+  winAvgUtility: number | null;
+  lossAvgLeetifyRating: number | null;
+  lossAvgPersonalPerformance: number | null;
+  lossAvgHTLVRating: number | null;
+  lossAvgKD: number | null;
+  lossAvgAim: number | null;
+  lossAvgUtility: number | null;
 };
 
 const USER_AGENTS = [
@@ -89,7 +88,7 @@ const USER_AGENTS = [
 const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 export async function startFaceitLeetifyFetching() {
-  const playerIDs = await fetchFaceitPlayerIDs("EU", 5, 0);
+  const playerIDs = await fetchFaceitPlayerIDs("EU", 1, 0);
   if (playerIDs.length === 0) {
     throw new Error("Fetch PlayerIDs failed");
   }
@@ -105,6 +104,10 @@ export async function startFaceitLeetifyFetching() {
   for (const player of playerDetails) {
     const ids = await fetchLeetifyMatchIDs(player.steam_id_64);
     for (const id of ids) {
+      if (id.length < 36) {
+        console.log("match id too short, skipping");
+        continue;
+      }
       matchURLs.push(buildLeetifyMatchURL(id));
     }
   }
@@ -116,10 +119,89 @@ export async function startFaceitLeetifyFetching() {
     viewport: { width: 1280, height: 800 },
   });
 
-  const table = await scrapeMatch(context, matchURLs[0]!);
-  for (const row of table) {
-    console.log(row);
+  for (const url of matchURLs) {
+    const table = await scrapeMatch(context, url);
+    console.log("Match scraped");
+    const match: Match = await parseMatchTable(table, url);
+    console.log("Match parsed");
+    console.log("Match teams:", match.teams.map(team => ({
+      won: team.won,
+      playerCount: team.players.length,
+      samplePlayer: team.players[0]
+    })));
+    
+    const matchAverageStats = getAverageMatchStats(match);
+    console.log("Match average stats computed");
+    console.log("Match average stats:", matchAverageStats);
+    
+    const savedMatchAverageStats = await saveMatchStats({
+      matchURL: matchAverageStats.matchURL,
+      wAvgLeetifyRating: matchAverageStats.winAvgLeetifyRating,
+      wAvgPersonalPerformance: matchAverageStats.winAvgPersonalPerformance,
+      wAvgHLTVRating: matchAverageStats.winAvgHTLVRating,
+      wAvgKD: matchAverageStats.winAvgKD,
+      wAvgAim: matchAverageStats.winAvgAim,
+      wAvgUtility: matchAverageStats.winAvgUtility,
+      lAvgLeetifyRating: matchAverageStats.lossAvgLeetifyRating,
+      lAvgPersonalPerformance: matchAverageStats.lossAvgPersonalPerformance,
+      lAvgHLTVRating: matchAverageStats.lossAvgHTLVRating,
+      lAvgKD: matchAverageStats.lossAvgKD,
+      lAvgAim: matchAverageStats.lossAvgAim,
+      lAvgUtility: matchAverageStats.lossAvgUtility,
+    });
+    console.log(`Match saved to DB: ${savedMatchAverageStats}`)
   }
+}
+
+async function parseMatchTable(matchTable: string[][], matchURL: string) {
+  const gameStats: PlayerStats[] = [];
+  
+  for (let i = 0; i < matchTable.length; i++) {
+    const row = matchTable[i];
+    if (!row) continue;
+    
+    const p: PlayerStats = {
+      name: row[0] && row[0] !== "" ? row[0] : "Unknown",
+      leetifyRating:
+        row[1] && !isNaN(parseFloat(row[1])) ? parseFloat(row[1]) : null,
+      personalPerformance:
+        row[2] && !isNaN(parseFloat(row[2])) ? parseFloat(row[2]) : null,
+      hltvRating:
+        row[3] && !isNaN(parseFloat(row[3])) ? parseFloat(row[3]) : null,
+      kd: row[4] && !isNaN(parseFloat(row[4])) ? parseFloat(row[4]) : null,
+      adr: row[5] && !isNaN(parseFloat(row[5])) ? parseFloat(row[5]) : null,
+      aim: row[6] && !isNaN(parseFloat(row[6])) ? parseFloat(row[6]) : null,
+      utility: row[7] && !isNaN(parseFloat(row[7])) ? parseFloat(row[7]) : null,
+      won: i < 5 ? true : false,
+    };
+    
+    await savePlayerStats({
+      name: p.name,
+      leetifyRating: p.leetifyRating,
+      personalPerformance: p.personalPerformance,
+      hltvRating: p.hltvRating,
+      kd: p.kd,
+      adr: p.adr,
+      aim: p.aim,
+      utility: p.utility,
+      won: p.won,
+    });
+    
+    gameStats.push(p);
+  }
+
+  const winningTeam: Team = {
+    players: gameStats.slice(0, 5),
+    won: true,
+  };
+  const losingTeam: Team = {
+    players: gameStats.slice(5, 10),
+    won: false,
+  };
+  return {
+    teams: [winningTeam, losingTeam],
+    matchURL: matchURL,
+  } satisfies Match;
 }
 
 async function scrapeMatch(context: BrowserContext, matchURL: string) {
@@ -141,20 +223,20 @@ async function scrapeMatch(context: BrowserContext, matchURL: string) {
       rows.forEach((row) => {
         const cells = Array.from(row.querySelectorAll("td"));
         const builtRow: string[] = [];
-        
+
         cells.forEach((cell, i) => {
           if (i === 0) {
             const name =
-            cell.querySelector(".text-truncate")?.textContent?.trim() ||
-            cell.textContent?.trim() ||
-            "";
+              cell.querySelector(".text-truncate")?.textContent?.trim() ||
+              cell.textContent?.trim() ||
+              "";
             builtRow.push(name);
           } else {
             builtRow.push(cell.textContent?.trim() || "");
           }
-        })
+        });
         allData.push(builtRow);
-      })
+      });
       return allData;
     });
     return tableData;
@@ -258,142 +340,114 @@ async function fetchFaceitProfiles(playerID: string[]) {
   return playerDetails;
 }
 
-function getAverageMatchStats(matches: Match[]): MatchAverageStats[] {
-  const matchesAverageStats: MatchAverageStats[] = [];
-  const teamSize = 5;
+function getAverageMatchStats(match: Match): MatchAverageStats {
+  let winLeetify = 0,
+    winPersonalPerformance = 0,
+    winHLTV = 0,
+    winKD = 0,
+    winAim = 0,
+    winUtility = 0;
 
-  for (const match of matches) {
-    let winLeetify = 0,
-      winPersonalPerformance = 0,
-      winHLTV = 0,
-      winKD = 0,
-      winAim = 0,
-      winUtility = 0;
+  let lossLeetify = 0,
+    lossPersonalPerformance = 0,
+    lossHLTV = 0,
+    lossKD = 0,
+    lossAim = 0,
+    lossUtility = 0;
 
-    let lossLeetify = 0,
-      lossPersonalPerformance = 0,
-      lossHLTV = 0,
-      lossKD = 0,
-      lossAim = 0,
-      lossUtility = 0;
+  let winLeetifyCount = 0,
+    winPersonalPerformanceCount = 0,
+    winHLTVCount = 0,
+    winKDCount = 0,
+    winAimCount = 0,
+    winUtilityCount = 0;
 
-    let skipMatch = false;
+  let lossLeetifyCount = 0,
+    lossPersonalPerformanceCount = 0,
+    lossHLTVCount = 0,
+    lossKDCount = 0,
+    lossAimCount = 0,
+    lossUtilityCount = 0;
 
-    // Process winning team (index 0)
-    for (const player of match.teams[0].players) {
-      const lr = parseFloat(player.leetifyRating);
-      if (isNaN(lr)) {
-        skipMatch = true;
-        break;
-      }
-      winLeetify += lr;
-
-      const pp = parseFloat(player.personalPerformance);
-      if (isNaN(pp)) {
-        skipMatch = true;
-        break;
-      }
-      winPersonalPerformance += pp;
-
-      const hr = parseFloat(player.hltvRating);
-      if (isNaN(hr)) {
-        skipMatch = true;
-        break;
-      }
-      winHLTV += hr;
-
-      const kdr = parseFloat(player.kd);
-      if (isNaN(kdr)) {
-        skipMatch = true;
-        break;
-      }
-      winKD += kdr;
-
-      const aim = parseFloat(player.aim);
-      if (isNaN(aim)) {
-        skipMatch = true;
-        break;
-      }
-      winAim += aim;
-
-      const util = parseFloat(player.utility);
-      if (isNaN(util)) {
-        skipMatch = true;
-        break;
-      }
-      winUtility += util;
+  // Process winning team (index 0)
+  for (const player of match.teams[0].players) {
+    if (player.leetifyRating !== null) {
+      winLeetify += player.leetifyRating;
+      winLeetifyCount++;
     }
 
-    if (skipMatch) {
-      continue;
+    if (player.personalPerformance !== null) {
+      winPersonalPerformance += player.personalPerformance;
+      winPersonalPerformanceCount++;
     }
 
-    // Process losing team (index 1)
-    for (const player of match.teams[1].players) {
-      const lr = parseFloat(player.leetifyRating);
-      if (isNaN(lr)) {
-        skipMatch = true;
-        break;
-      }
-      lossLeetify += lr;
-
-      const pp = parseFloat(player.personalPerformance);
-      if (isNaN(pp)) {
-        skipMatch = true;
-        break;
-      }
-      lossPersonalPerformance += pp;
-
-      const hr = parseFloat(player.hltvRating);
-      if (isNaN(hr)) {
-        skipMatch = true;
-        break;
-      }
-      lossHLTV += hr;
-
-      const kdr = parseFloat(player.kd);
-      if (isNaN(kdr)) {
-        skipMatch = true;
-        break;
-      }
-      lossKD += kdr;
-
-      const aim = parseFloat(player.aim);
-      if (isNaN(aim)) {
-        skipMatch = true;
-        break;
-      }
-      lossAim += aim;
-
-      const util = parseFloat(player.utility);
-      if (isNaN(util)) {
-        skipMatch = true;
-        break;
-      }
-      lossUtility += util;
+    if (player.hltvRating !== null) {
+      winHLTV += player.hltvRating;
+      winHLTVCount++;
     }
 
-    if (skipMatch) {
-      console.log("Skipping match");
-      continue;
+    if (player.kd !== null) {
+      winKD += player.kd;
+      winKDCount++;
     }
 
-    matchesAverageStats.push({
-      matchURL: match.matchURL,
-      winAvgLeetifyRating: winLeetify / teamSize,
-      winAvgPersonalPerformance: winPersonalPerformance / teamSize,
-      winAvgHTLVRating: winHLTV / teamSize,
-      winAvgKD: winKD / teamSize,
-      winAvgAim: winAim / teamSize,
-      winAvgUtility: winUtility / teamSize,
-      lossAvgLeetifyRating: lossLeetify / teamSize,
-      lossAvgPersonalPerformance: lossPersonalPerformance / teamSize,
-      lossAvgHTLVRating: lossHLTV / teamSize,
-      lossAvgKD: lossKD / teamSize,
-      lossAvgAim: lossAim / teamSize,
-      lossAvgUtility: lossUtility / teamSize,
-    });
+    if (player.aim !== null) {
+      winAim += player.aim;
+      winAimCount++;
+    }
+
+    if (player.utility !== null) {
+      winUtility += player.utility;
+      winUtilityCount++;
+    }
   }
 
-  return matchesAverageStats;
+  // Process losing team (index 1)
+  for (const player of match.teams[1].players) {
+    if (player.leetifyRating !== null) {
+      lossLeetify += player.leetifyRating;
+      lossLeetifyCount++;
+    }
+
+    if (player.personalPerformance !== null) {
+      lossPersonalPerformance += player.personalPerformance;
+      lossPersonalPerformanceCount++;
+    }
+
+    if (player.hltvRating !== null) {
+      lossHLTV += player.hltvRating;
+      lossHLTVCount++;
+    }
+
+    if (player.kd !== null) {
+      lossKD += player.kd;
+      lossKDCount++;
+    }
+
+    if (player.aim !== null) {
+      lossAim += player.aim;
+      lossAimCount++;
+    }
+
+    if (player.utility !== null) {
+      lossUtility += player.utility;
+      lossUtilityCount++;
+    }
+  }
+
+  return {
+    matchURL: match.matchURL,
+    winAvgLeetifyRating: winLeetifyCount > 0 ? winLeetify / winLeetifyCount : null,
+    winAvgPersonalPerformance: winPersonalPerformanceCount > 0 ? winPersonalPerformance / winPersonalPerformanceCount : null,
+    winAvgHTLVRating: winHLTVCount > 0 ? winHLTV / winHLTVCount : null,
+    winAvgKD: winKDCount > 0 ? winKD / winKDCount : null,
+    winAvgAim: winAimCount > 0 ? winAim / winAimCount : null,
+    winAvgUtility: winUtilityCount > 0 ? winUtility / winUtilityCount : null,
+    lossAvgLeetifyRating: lossLeetifyCount > 0 ? lossLeetify / lossLeetifyCount : null,
+    lossAvgPersonalPerformance: lossPersonalPerformanceCount > 0 ? lossPersonalPerformance / lossPersonalPerformanceCount : null,
+    lossAvgHTLVRating: lossHLTVCount > 0 ? lossHLTV / lossHLTVCount : null,
+    lossAvgKD: lossKDCount > 0 ? lossKD / lossKDCount : null,
+    lossAvgAim: lossAimCount > 0 ? lossAim / lossAimCount : null,
+    lossAvgUtility: lossUtilityCount > 0 ? lossUtility / lossUtilityCount : null,
+  };
 }
