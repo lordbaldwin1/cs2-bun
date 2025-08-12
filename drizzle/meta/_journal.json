@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1754806237197,
-      "tag": "0000_massive_loa",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1754860129480,
-      "tag": "0001_square_mesmero",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1754896620214,
-      "tag": "0002_slimy_sinister_six",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1754959043010,
-      "tag": "0003_condemned_human_fly",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1754960677920,
-      "tag": "0004_ordinary_calypso",
+      "when": 1755042283091,
+      "tag": "0000_tricky_solo",
       "breakpoints": true
     }
   ]

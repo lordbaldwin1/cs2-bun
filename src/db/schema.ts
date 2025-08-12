@@ -49,7 +49,7 @@ export type Match = typeof matches.$inferSelect;
 
 export const playerStats = sqliteTable("player_stats", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
+  steamID: text("steam_id").notNull().references(() => players.steamID),
   leetifyRating: real("leetify_rating"),
   personalPerformance: real("personal_performance"),
   hltvRating: real("hltv_rating"),

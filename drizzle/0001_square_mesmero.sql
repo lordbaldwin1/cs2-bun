@@ -1,1 +1,0 @@
-ALTER TABLE `users_table` RENAME TO `players`;
