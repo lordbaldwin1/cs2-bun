@@ -21,6 +21,7 @@
   "dependencies": {
     "drizzle-orm": "^0.44.4",
     "express": "^5.1.0",
+    "node-cron": "^4.2.1",
     "playwright": "^1.54.2"
   }
 }

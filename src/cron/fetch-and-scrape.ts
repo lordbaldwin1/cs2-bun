@@ -85,7 +85,6 @@ const USER_AGENTS = [
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
 ];
-const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 export async function startFaceitLeetifyFetching() {
   const playerIDs = await fetchFaceitPlayerIDs("EU", 1, 0);
@@ -105,13 +104,12 @@ export async function startFaceitLeetifyFetching() {
     const ids = await fetchLeetifyMatchIDs(player.steam_id_64);
     for (const id of ids) {
       if (id.length < 36) {
-        console.log("match id too short, skipping");
+        console.log(`Match id: ${id} is too short for player: ${player.steam_id_64}`);
         continue;
       }
       matchURLs.push(buildLeetifyMatchURL(id));
     }
   }
-  console.log(matchURLs.slice(0, 5));
 
   const browser = await getBrowser();
   const context = await browser.newContext({
