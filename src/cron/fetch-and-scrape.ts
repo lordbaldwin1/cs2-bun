@@ -1,4 +1,3 @@
-import { Table } from "drizzle-orm";
 import { config } from "../config";
 import { savePlayer } from "../db/queries/players";
 import { getBrowser } from "./browser";
