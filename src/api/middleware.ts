@@ -1,7 +1,12 @@
 import type { NextFunction, Request, Response } from "express";
 import { config } from "../config.js";
-import { respondWithError } from "./json.js";
-import { BadRequestError, ForbiddenError, NotFoundError, UnauthorizedError } from "./errors.js";
+import { respondWithError } from "./utils/json.js";
+import {
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+} from "./utils/errors.js";
 
 export function middlewareLogResponses(
   req: Request,
@@ -18,7 +23,12 @@ export function middlewareLogResponses(
   next();
 }
 
-export function middlewareErrorHandler(err: Error, _: Request, res: Response, __: NextFunction) {
+export function middlewareErrorHandler(
+  err: Error,
+  _: Request,
+  res: Response,
+  __: NextFunction
+) {
   let statusCode = 500;
   let message = "Something went wrong on our end";
   if (err instanceof BadRequestError) {
@@ -40,4 +50,17 @@ export function middlewareErrorHandler(err: Error, _: Request, res: Response, __
   }
 
   respondWithError(res, statusCode, message);
+}
+
+export function middlewareAPIHits(
+  _: Request,
+  __: Response,
+  next: NextFunction
+) {
+  if (!config.api.metrics) {
+    next();
+  } else {
+    config.api.metrics.apiHits++;
+    next();
+  }
 }

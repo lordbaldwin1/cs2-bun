@@ -8,6 +8,20 @@
       "when": 1755042283091,
       "tag": "0000_tricky_solo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1755210571741,
+      "tag": "0001_odd_white_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1755217473861,
+      "tag": "0002_mysterious_george_stacy",
+      "breakpoints": true
     }
   ]
 }

@@ -68,3 +68,11 @@ export const playerStats = sqliteTable("player_stats", {
 
 export type NewPlayerStats = typeof playerStats.$inferInsert;
 export type PlayerStats = typeof playerStats.$inferSelect;
+
+export const metrics = sqliteTable("metrics", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  apiHits: integer("api_hits").notNull().default(0),
+});
+
+export type NewMetrics = typeof metrics.$inferInsert;
+export type Metrics = typeof metrics.$inferSelect;

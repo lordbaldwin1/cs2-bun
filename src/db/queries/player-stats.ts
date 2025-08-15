@@ -1,4 +1,4 @@
-import { avg } from "drizzle-orm";
+import { avg, sql } from "drizzle-orm";
 import { db } from "..";
 import { playerStats, type NewPlayerStats } from "../schema";
 
@@ -16,12 +16,12 @@ export async function getPlayerStatsGrouped() {
   const rows = await db
     .select({
       steamID: playerStats.steamID,
-      avgLR: avg(playerStats.leetifyRating),
-      avgHR: avg(playerStats.hltvRating),
-      avgKD: avg(playerStats.kd),
-      avgAim: avg(playerStats.aim),
-      avgUtil: avg(playerStats.utility),
-      avgWon: avg(playerStats.won),
+      avgLR: sql<number>`COALESCE(AVG(${playerStats.leetifyRating}), 0)`,
+      avgHR: sql<number>`COALESCE(AVG(${playerStats.hltvRating}), 0)`,
+      avgKD: sql<number>`COALESCE(AVG(${playerStats.kd}), 0)`,
+      avgAim: sql<number>`COALESCE(AVG(${playerStats.aim}), 0)`,
+      avgUtil: sql<number>`COALESCE(AVG(${playerStats.utility}), 0)`,
+      avgWon: sql<number>`COALESCE(AVG(${playerStats.won}), 0)`,
     })
     .from(playerStats)
     .groupBy(playerStats.steamID);
