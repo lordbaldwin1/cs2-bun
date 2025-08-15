@@ -16,3 +16,14 @@ export async function getMetrics() {
     .from(metrics);
   return rows[0];
 }
+
+export async function saveMetrics(newMetric: NewMetrics) {
+  const [res] = await db
+    .update(metrics)
+    .set({
+      name: newMetric.name,
+      apiHits: newMetric.apiHits,
+    })
+    .returning();
+  return res;
+}

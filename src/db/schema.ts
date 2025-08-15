@@ -70,7 +70,7 @@ export type NewPlayerStats = typeof playerStats.$inferInsert;
 export type PlayerStats = typeof playerStats.$inferSelect;
 
 export const metrics = sqliteTable("metrics", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").primaryKey(),
   apiHits: integer("api_hits").notNull().default(0),
 });
 

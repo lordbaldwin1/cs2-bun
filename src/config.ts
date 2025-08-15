@@ -1,6 +1,7 @@
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { Metrics } from "./db/schema";
 import { createMetric, getMetrics } from "./db/queries/metrics";
+import { randomUUIDv7 } from "bun";
 
 type Config = {
   api: APIConfig;
@@ -12,17 +13,13 @@ type APIConfig = {
   port: number;
   platform: string;
   faceitAPIKey: string;
-  metrics: Metrics | undefined;
+  metrics: Metrics;
 };
 
 type DBConfig = {
   url: string;
-  migrationConfig: MigrationConfig;
 };
 
-const migrationConfig: MigrationConfig = {
-  migrationsFolder: "./drizzle",
-};
 
 export const config: Config = {
   api: {
@@ -30,11 +27,10 @@ export const config: Config = {
     port: Number(envOrThrow("PORT")),
     platform: envOrThrow("PLATFORM"),
     faceitAPIKey: envOrThrow("FACEIT_API_KEY"),
-    metrics: await getOrCreateMetrics(),
+    metrics: { name: randomUUIDv7(), apiHits: 0 },
   },
   db: {
     url: envOrThrow("DB_FILE_NAME"),
-    migrationConfig: migrationConfig,
   },
 };
 
@@ -46,22 +42,15 @@ function envOrThrow(key: string) {
   return value;
 }
 
-// TODO:!!!!!
-// we can't get metrics in the initialization of config because
-// we are also creating the db connection and migrating in config
-// initialization. This means when we try to initialize the metrics
-// field, we don't have the db connection yet
-//
-// Solution: let's start with metrics undefined and then initialize it in getOrCreateMetrics(). In the function
-// fetch the data and then set config.api.metrics to it!
-async function getOrCreateMetrics() {
+export async function getOrCreateMetrics() {
   const metric = await getMetrics();
   if (!metric) {
-    const newMetric = await createMetric({
+    config.api.metrics = {
+      name: randomUUIDv7(),
       apiHits: 0,
-    });
-    return newMetric;
+    }
+    return;
   }
-  return metric;
+  config.api.metrics = metric;
 }
 
