@@ -1,7 +1,7 @@
 import { getPearsonCorrelations, type PearsonCorrelations } from "./calculations/pearson"
 import { calculatePlayerPoints, type Scatter } from "./calculations/scatter";
 
-type Stats = {
+export type Stats = {
   pearson: PearsonCorrelations;
   scatter: Scatter[];
 }
