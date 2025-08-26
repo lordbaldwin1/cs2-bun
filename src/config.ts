@@ -1,6 +1,5 @@
-import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { Metrics } from "./db/schema";
-import { createMetric, getMetrics } from "./db/queries/metrics";
+import { getMetrics } from "./db/queries/metrics";
 import { randomUUIDv7 } from "bun";
 
 type Config = {
@@ -14,6 +13,7 @@ type APIConfig = {
   platform: string;
   faceitAPIKey: string;
   metrics: Metrics;
+  frontendURL: string;
 };
 
 type DBConfig = {
@@ -28,6 +28,7 @@ export const config: Config = {
     platform: envOrThrow("PLATFORM"),
     faceitAPIKey: envOrThrow("FACEIT_API_KEY"),
     metrics: { name: randomUUIDv7(), apiHits: 0 },
+    frontendURL: envOrThrow("FRONTEND_URL"),
   },
   db: {
     url: envOrThrow("DB_FILE_NAME"),

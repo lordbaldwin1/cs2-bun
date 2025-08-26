@@ -25,7 +25,7 @@ export async function fetchLeetifyMatchIDs(steamID: string) {
   if (!data.isSensitiveDataVisible) {
     return [];
   }
-  return data.games.slice(0, 30).map((game) => game.gameId);
+  return data.games.slice(0, 100).map((game) => game.gameId);
 }
 
 export async function scrapeMatch(context: BrowserContext, match: MatchURLAndSteamID) {
