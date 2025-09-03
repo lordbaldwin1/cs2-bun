@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ['nodejs_20', 'bun', 'python3', 'gcc', 'gnumake', 'pkg-config']
+
+[phases.install]
+cmds = ['bun install']
+
+[start]
+cmd = 'bun start'
